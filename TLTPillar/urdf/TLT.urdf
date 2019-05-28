@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<robot name="TLTPillar">
+  <material name="blue">
+    <color rgba="0 0 0.8 1"/>
+  </material>
+
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+  <material name="green">
+    <color rgba="0 0.6 0 1"/>
+  </material>
+  <link name="bot">
+    <visual>
+      <origin rpy="1.57075 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://rTLTPillar/meshes/TLTBB.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="blue"/>
+    </visual>
+  </link>
+  <link name="mid">
+    <visual>
+      <origin rpy="1.57075 0 0" xyz="0.012 -0.027 -0.3 "/>
+      <geometry>
+        <mesh filename="package://rTLTPillar/meshes/TLTMB.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+  <link name="top">
+    <visual>
+      <origin rpy="1.57075 0 0" xyz="-0.013 -0.002 -0.6"/>
+      <geometry>
+        <mesh filename="package://rTLTPillar/meshes/TLTUB.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="green"/>
+    </visual>
+  </link>
+  <joint name="base_to_mid" type="prismatic">
+    <origin xyz="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit upper="4" lower="0" effort="10" velocity="10" />
+    <parent link="bot"/>
+    <child link="mid"/>
+  </joint>
+  <joint name="mid_to_top" type="prismatic">
+    <origin xyz="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit upper="4" lower="0" effort="10" velocity="10" />
+    <parent link="mid"/>
+    <child link="top"/>
+  </joint>
+</robot>

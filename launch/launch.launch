@@ -1,0 +1,10 @@
+<launch>
+  <arg name="model" />
+  <param name="robot_description" textfile="$(find rTLTPillar)/urdf/TLT.urdf" />
+  <param name="use_gui" value="true"/>
+
+  <node name="joint_state_publisher" pkg="serialprueba" type="sa2" />
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find urdf_tutorial)/rviz/urdf.rviz" required="true" />
+
+</launch>
