@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   urdf
   std_msgs
+  sensor_msgs
   message_generation
 )
 
@@ -75,6 +76,7 @@ find_package(catkin REQUIRED COMPONENTS
  generate_messages(
    DEPENDENCIES
    std_msgs
+   sensor_msgs
  )
 
 ################################################
@@ -138,6 +140,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/serialprueba_node.cpp)
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -204,4 +207,7 @@ include_directories(
 add_executable(serial_arduino src/serial_arduino.cpp)
 target_link_libraries(serial_arduino ${catkin_LIBRARIES})
 add_executable(sa2 src/sa2.cpp)
+add_dependencies( serial_arduino ${PROJECT_NAME}_generate_messages_cpp )
 target_link_libraries(sa2 ${catkin_LIBRARIES})
+add_executable(Velocitytester src/Velocitytester.cpp)
+target_link_libraries(Velocitytester ${catkin_LIBRARIES})
