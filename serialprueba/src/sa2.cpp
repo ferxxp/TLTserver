@@ -13,7 +13,6 @@
 #include "std_msgs/Int16.h"
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Float64.h>
-#include <sensor_msgs/JointState.h>
 #include <boost/bind.hpp>
 #include <exception>
 #include <boost/crc.hpp>
@@ -30,6 +29,9 @@
 #include "serialprueba/CurrPos.h"
 #include "serialprueba/CurrVel.h"
 #include "serialprueba/ErrorCode.h"
+#include "serialprueba/MoveSpeed.h"
+#include "serialprueba/MovetoPos.h"
+#include <sensor_msgs/JointState.h>
 
 using namespace boost::asio;
 
@@ -46,16 +48,16 @@ uint16_t currVelocidad[6];
 uint16_t current[6];
 int32_t posdest[6];
 uint MachineState;
+int actuatorStatus[6];
 bool moveDone[6];
 boost::thread RosListHandl[2];
 uint32_t ErrorCode;
 const boost::float64_t coeficient = 0.3125;
-std::string string2hexString(std::string chain){
+std::string string2hexString(char* input)
+{
     int loop;
     int i; 
     char* output;
-    char *input=new char[chain.size()+1];
-    strcpy(input,chain.c_str());
     
     i=0;
     loop=0;
@@ -70,7 +72,21 @@ std::string string2hexString(std::string chain){
     output[i++] = '\0';
 return output;
 }
+struct HexCharStruct
+{
+  unsigned char c;
+  HexCharStruct(unsigned char _c) : c(_c) { }
+};
 
+inline std::ostream& operator<<(std::ostream& o, const HexCharStruct& hs)
+{
+  return (o << std::hex << (int)hs.c);
+}
+
+inline HexCharStruct hex(unsigned char _c)
+{
+  return HexCharStruct(_c);
+}
 ///Configuracion del puerto serie
 std::string port = "/dev/ttyUSB0";                                      /*!< COMM port name.                  */
 int         baudrate = 38400;                                              /*!< COMM baud rate.                  */
@@ -113,10 +129,9 @@ boost::float64_t flanktom(int32_t A){
 
 //recepcion y envio a IOPort****************************************************
 bool send(std::string cmd) {
-  std::string info=cmd;
-  ROS_INFO_STREAM( "Enviando: "<<(cmd.c_str())); 
   addCRC_ccitt(cmd);
-  
+
+
   try {
     mutex.lock();
     boost::asio::write(handle, boost::asio::buffer(cmd.c_str(), cmd.size()));
@@ -125,11 +140,18 @@ bool send(std::string cmd) {
     std::cerr << "Could not send command '" << cmd << "' towards port " << port << "." << std::endl;
     return false;
   }
-  
+  std::cout << "Enviando: ";
+  for (int xnt = 0; xnt < cmd.length(); xnt++) {
+    std::cout << hex(cmd[xnt]) << " ";
+  }
+  std::cout << std::endl;
+
   return true;
 }
 bool sends(std::string cmd) {
   addCRC_ccitt(cmd);
+
+
   try {
     mutex.lock();
     boost::asio::write(handle, boost::asio::buffer(cmd.c_str(), cmd.size()));
@@ -138,6 +160,12 @@ bool sends(std::string cmd) {
     std::cerr << "Could not send command '" << cmd << "' towards port " << port << "." << std::endl;
     return false;
   }
+  // std::string debug="look above";
+  // for (int xnt = 0; xnt < cmd.length(); xnt++) {
+  //   std::cout << hex(cmd[xnt]) << " ";
+  // }
+  // std::cout<<std::endl;
+  // ROS_INFO(cmd.c_str());
   return true;
 }
 bool recv(std::string& ret) {
@@ -279,7 +307,7 @@ bool openCommunication() {
   std::string ROmsg = "RO";
   std::string ROresp;
   ROmsg.append<int>(1, 0x00);
-  send(ROmsg);
+  sends(ROmsg);
   recv(ROresp);
 
   return ROresp.find(0x06, 0) != std::string::npos;
@@ -366,12 +394,14 @@ void RTVel(int actuador, uint16_t speed){
 
 //ejecutar y parar funcion******************************************************
 void REMove(int actuador,int dato){
-  ROS_INFO_STREAM("Executing function "<<actuador);
+  ROS_INFO("Executing function ");
   std::string REmsg = "RE";
   REmsg.append<int>(1, actuador-1);
   REmsg.append<int>(1, dato);
   REmsg.append<int>(1, 0x01);
-  sends(REmsg);
+
+  std::cout << std::endl;
+  send(REmsg);
 
 }
 void RSMove(int actuador){
@@ -403,23 +433,36 @@ void movetoPos(int actuador,uint16_t speed,int32_t positiondestiny){
 //lectura de mensajes**********************************************************
 void ROGotmsg(std::string Msg){
   if(Msg[2]!=0x06){
-
-    ROS_WARN_STREAM("initialization rejected: "<<string2hexString(Msg));
+    ROS_WARN("initialization rejected");
+    std::cout<<"ErrorRO ";
+    for (int xnt = 0; xnt < 5; xnt++) {
+      std::cout<<(hex(Msg[xnt]))<<" ";
+    }
+    std::cout<<std::endl;
   }else{
     ROS_INFO("initialization completed");
   }
 }
 void RCGotmsg(std::string Msg){
   if(Msg[2]!=0x06){
-    ROS_WARN_STREAM("Keep connection error: "<<string2hexString(Msg));
+    ROS_WARN("Keep connection error");
+    std::cout<<"ErrorRC ";
+    for (int xnt = 0; xnt < 5; xnt++) {
+      std::cout<<(hex(Msg[xnt]))<<" ";
+    }
+    std::cout<<std::endl;
   }else{
     ROS_INFO("Keep connection completed");
   }
 }
 void RTGotmsg(std::string Msg){
   if(Msg[2]!=0x06){
-    ROS_WARN_STREAM("Could not transfer info: "<<string2hexString(Msg));
-
+    ROS_WARN("Could not transfer info");
+    std::cout<<"ErrorRT ";
+    for (int xnt = 0; xnt < 5; xnt++) {
+      std::cout<<(hex(Msg[xnt]))<<" ";
+    }
+    std::cout<<std::endl;
   }else{
     ROS_INFO("Transfer completed");
     if (colaRT.front()==1) {
@@ -427,20 +470,29 @@ void RTGotmsg(std::string Msg){
     }else if (colaRT.front()==2) {
       ROS_INFO("Position succesfully updated");
     }else{
-      ROS_WARN_STREAM("WTF not known information transfer"<<string2hexString(Msg));
+      ROS_ERROR("No info in transfer");
     }
   }
 }
 void REGotmsg(std::string Msg){
   if(Msg[2]!=0x06){
-    ROS_WARN_STREAM("couldn not execute function: "<<string2hexString(Msg));
+    ROS_WARN("couldn not execute function");
+    std::cout<<"ErrorRE ";
+    for (int xnt = 0; xnt < 5; xnt++) {
+      std::cout<<(hex(Msg[xnt]))<<" ";
+    }
     }else{
     ROS_WARN("Moving");
   }
 }
 void RSGotmsg(std::string Msg){
   if(Msg[2]!=0x06){
-    ROS_WARN_STREAM("couldn not stop function: "<<string2hexString(Msg));
+    ROS_WARN("couldn not stop function");
+    std::cout<<"ErrorRS ";
+    for (int xnt = 0; xnt < 5; xnt++) {
+      std::cout<<(hex(Msg[xnt]))<<" ";
+    }
+    std::cout<<std::endl;
   }else{
     ROS_WARN("Stopping function");
     uint mask=0;
@@ -487,6 +539,7 @@ void RGGot4(std::string Msg, double n1, double n2){
 void RGGot5(std::string Msg, double n1, double n2){
   ROS_INFO("Actuators status recieved");
   for(int32_t cnt=0;cnt<(n1+n2);cnt++) {
+    actuatorstatus[cnt]=(Msg[5+cnt]<0?Msg[5+cnt]+256:Msg[5+cnt]);
     moveDone[cnt]=((Msg[5+cnt]<0?Msg[5+cnt]+256:Msg[5+cnt]) & ( 1 << 4 )) >> 4;
   }
 }
@@ -544,7 +597,12 @@ void readbd() {
         }
         else if (msgio.substr(0, 2) == "RG") {
           if(msgio[2]!=0x06){
-            ROS_WARN_STREAM("Could not get info:  "<<string2hexString(msgio.substr(0,5)));
+            ROS_ERROR("Could not get info");
+            std::cout<<"ErrorRG ";
+            for (int xnt = 0; xnt < 5; xnt++) {
+              std::cout<<(hex(msgio[xnt]))<<" ";
+            }
+            std::cout<<std::endl;
             msgio.erase(0,5);
           }
           else{
@@ -577,7 +635,7 @@ void readbd() {
               else if(colaRG.front()==8){
                 RGGot8(Msg,n1,n2);
               }
-              else{ROS_WARN_STREAM("WTF unknown msg for RG:  "<<string2hexString(Msg));}
+              else{ROS_WARN("WTF unknown msg for RG");}
               colaRG.pop();
               msgio.erase(0,7+n1+n2);
             }else {
@@ -591,7 +649,12 @@ void readbd() {
         }
 
         else {
-         ROS_ERROR_STREAM("****Error****: "<<string2hexString(msgio)<<" :Please verify correct function from node");
+         ROS_ERROR("Error**********************************************");
+
+          for (int xnt = 0; xnt < msgio.length(); xnt++) {
+            std::cout << hex(msgio[xnt]) << " ";
+          }
+          std::cout << std::endl;
           msgio.erase(0, msgio.find('R', 4));
         }
       }
@@ -605,9 +668,11 @@ void readbd() {
 //funciones ROSService y ROSTopic***********************************************
 void roslistenerpos(const std_msgs::Float64MultiArray& ROSLdestposition){
    boost::float64_t a[2];   
-  if(ROSLdestposition.data.size()==1){    
+  if(ROSLdestposition.data.size()==1){
+     
      a[0]=ROSLdestposition.data[0]/2;
      a[1]=ROSLdestposition.data[0]/2;
+     
    }else{
      a[0]=ROSLdestposition.data[0];
      a[1]=ROSLdestposition.data[1];
@@ -616,6 +681,7 @@ void roslistenerpos(const std_msgs::Float64MultiArray& ROSLdestposition){
     if(abs(mToflank(ROSLdestposition.data[cnt])-currposition[cnt])>5){
       uint mask=0;
       if(cnt==0){mask=0x40;}else if(cnt==1){mask=0x10;}
+	std::cout<<(MachineState & mask)<<std::endl;
       if(MachineState & mask){
         RSMove(cnt+1);
         RosListHandl[cnt].interrupt();
@@ -628,11 +694,18 @@ void roslistenerpos(const std_msgs::Float64MultiArray& ROSLdestposition){
     }
    }
 }
-void roslistenervel(const std_msgs::Float64& ROSLdesiredVel){
-  boost::float64_t a[2];    
-    a[0]=ROSLdesiredVel.data/2;
-    a[1]=ROSLdesiredVel.data/2;
-     for(uint16_t cnt=0;cnt<2 ;cnt++){
+void roslistenervel(const std_msgs::Float64MultiArray& ROSLdesiredVel){
+  boost::float64_t a[2];   
+  if(ROSLdesiredVel.data.size()==1){
+     
+     a[0]=ROSLdesiredVel.data[0]/2;
+     a[1]=ROSLdesiredVel.data[0]/2;
+     
+   }else{
+     a[0]=ROSLdesiredVel.data[0];
+     a[1]=ROSLdesiredVel.data[1];
+   }
+   for(uint16_t cnt=0;cnt<2 ;cnt++){
       uint mask=0;
       if(cnt==0){mask=0x40;}else if(cnt==1){mask=0x10;}
       if((MachineState & mask)){
@@ -641,21 +714,36 @@ void roslistenervel(const std_msgs::Float64& ROSLdesiredVel){
         RosListHandl[cnt].join();
 	boost::this_thread::sleep_for(boost::chrono::milliseconds(500));
     }
-    if(a[cnt]!=0){
+    if(ROSLdesiredVel.data[cnt]!=0){
     posdest[cnt]=a[cnt]<0?memPositions[26*(1+cnt)-2]:memPositions[26*(1+cnt)-1];
     RosListHandl[cnt] =boost::thread(movetoPos,cnt+1,abs(mToflank(a[cnt])),posdest[cnt]);
       }
    }
 }
+//joint_state
 void rospublish(std_msgs::Float64MultiArray msg_p,ros::Publisher ROSPPosition,
   std_msgs::Float64MultiArray msg_v,ros::Publisher ROSPVelocity,
   geometry_msgs::TransformStamped tfTLT[2],tf::TransformBroadcaster broadcaster,
-  ros::Rate loop_rate){
+  ros::Publisher joint_pub, sensor_msgs::JointState joint_state,ros::Rate loop_rate){
+  
   while(ros::ok){
   for(int32_t cnt=0;cnt<6;cnt++){
   msg_p.data.push_back(flanktom(currposition[cnt]));
   msg_v.data.push_back(flanktom(currVelocidad[cnt]));
   }
+  	joint_state.header.stamp = ros::Time::now();
+        joint_state.name.resize(2);
+        joint_state.position.resize(2);
+	joint_state.velocity.resize(2);
+	joint_state.effort.resize(2);
+        joint_state.name[0] ="Mid";
+        joint_state.position[0] = currposition[0];
+	joint_state.velocity[0] = currVelocidad[0];
+	joint_state.effort[0] = current[0];
+        joint_state.name[1] ="Top";
+        joint_state.position[1] = currposition[1];
+	joint_state.velocity[1] = currVelocidad[1];
+	joint_state.effort[1] = current[1];
   tfTLT[0].header.stamp = ros::Time::now();
   tfTLT[0].transform.translation.x = 0;
   tfTLT[0].transform.translation.y = 0;
@@ -670,9 +758,11 @@ void rospublish(std_msgs::Float64MultiArray msg_p,ros::Publisher ROSPPosition,
   broadcaster.sendTransform(tfTLT[1]);
   ROSPPosition.publish(msg_p);
   ROSPVelocity.publish(msg_v);
+	joint_pub.publish(joint_state);
   loop_rate.sleep();
   msg_p.data.clear();
   msg_v.data.clear();
+
 
   }
 }
@@ -837,6 +927,50 @@ void Movepruebas() {
       }}}
     }
 
+//Services createddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+bool MovetoPos(serialprueba::MovetoPos::Request &req,serialprueba::MovetoPos::Response &res){
+   boost::float64_t a[2];         
+     a[0]=req.Pos1;
+     a[1]=req.Pos2;
+   for(uint16_t cnt=0;cnt<2 ;cnt++){
+    if(abs(mToflank(a[cnt])-currposition[cnt])>5){
+      uint mask=0;
+      if(cnt==0){mask=0x40;}else if(cnt==1){mask=0x10;}
+	std::cout<<(MachineState & mask)<<std::endl;
+      if(MachineState & mask){
+        RSMove(cnt+1);
+        RosListHandl[cnt].interrupt();
+        RosListHandl[cnt].join();
+	boost::this_thread::sleep_for(boost::chrono::milliseconds(500));
+      }
+      posdest[cnt]=mToflank(a[cnt]) >memPositions[26*(1+cnt)-1]?memPositions[26*(1+cnt)-1]:mToflank(a[cnt]) ;
+      posdest[cnt]=posdest[cnt]<memPositions[26*(1+cnt)-2]?memPositions[26*(1+cnt)-2]:posdest[cnt];
+      RosListHandl[cnt] =boost::thread(movetoPos,cnt+1,50,posdest[cnt]);
+    }
+   }
+  return true;
+}
+bool MoveSpeed(serialprueba::MoveSpeed::Request &req,serialprueba::MoveSpeed::Response &res){
+  boost::float64_t a[2];   
+     a[0]=req.vel/2;
+     a[1]=req.vel/2;
+   for(uint16_t cnt=0;cnt<2 ;cnt++){
+      uint mask=0;
+      if(cnt==0){mask=0x40;}else if(cnt==1){mask=0x10;}
+      if((MachineState & mask)){
+        RSMove(cnt+1);
+        RosListHandl[cnt].interrupt();
+        RosListHandl[cnt].join();
+	boost::this_thread::sleep_for(boost::chrono::milliseconds(500));
+    }
+    if(a[cnt]!=0){
+    posdest[cnt]=a[cnt]<0?memPositions[26*(1+cnt)-2]:memPositions[26*(1+cnt)-1];
+    RosListHandl[cnt] =boost::thread(movetoPos,cnt+1,abs(mToflank(a[cnt])),posdest[cnt]);
+      }
+   }
+
+  return true;
+}
 
 
 
@@ -847,15 +981,17 @@ void Movepruebas() {
 
       ros::NodeHandle nh;
 
-      ros::Publisher ROSPPosition = nh.advertise<std_msgs::Float64MultiArray>("/TLT/pos", 1);
-      ros::Publisher ROSPVelocity = nh.advertise<std_msgs::Float64MultiArray>("/TLT/currvel", 1);
-      ros::Publisher ROSPSensor = nh.advertise<sensor_msgs::JointState>("/TLT/SM", 1);
+      ros::Publisher ROSPPosition = nh.advertise<std_msgs::Float64MultiArray>("/TLT/CurrPos", 1);
+      ros::Publisher ROSPVelocity = nh.advertise<std_msgs::Float64MultiArray>("/TLT/CurrVel", 1);
       ros::ServiceServer service = nh.advertiseService( "/MachineState",MachineStateSRV);
       ros::ServiceServer service2 = nh.advertiseService("/CurrPos", CurrPosSRV);
       ros::ServiceServer service3 = nh.advertiseService("/CurrVel", CurrVelSRV);
       ros::ServiceServer service4 = nh.advertiseService("/ErrorCode", ErrorCodeSRV);
-      ros::Subscriber ROSLPosition = nh.subscribe("/TLT/dest", 1, roslistenerpos);
-      ros::Subscriber ROSLVelocity = nh.subscribe("/TLT/vel", 1, roslistenervel);
+		ros::Publisher joint_pub = nh.advertise<sensor_msgs::JointState>("/TLT/joint_states", 1);
+		ros::ServiceServer service5 = nh.advertiseService("/MovetoPos", MovetoPos);
+		ros::ServiceServer service6 = nh.advertiseService("/MoveSpeed", MoveSpeed);
+      ros::Subscriber ROSLPosition = nh.subscribe("/TLT/nextPos", 1, roslistenerpos);
+      ros::Subscriber ROSLVelocity = nh.subscribe("/TLT/nextVel", 1, roslistenervel);
       tf::TransformBroadcaster broadcaster;
 
       ros::Rate loop_rate(2); //100
@@ -872,7 +1008,10 @@ void Movepruebas() {
       std_msgs::String msg;
       std_msgs::Float64MultiArray msg_v;
       std_msgs::Float64MultiArray msg_p;
-      std::string rot;
+		
+		sensor_msgs::JointState joint_state;
+      
+	std::string rot;
       float periode=500;
 
 
@@ -902,7 +1041,7 @@ void Movepruebas() {
       boost::thread t5(holdervoid,RGlastErrorCode,periode);
       boost::thread t6(holdervoid,RGactuatorSpeedS,periode);
       boost::thread t7(holdervoid,RGcurrent,periode);
-      boost::thread t8(rospublish,msg_v,ROSPPosition,msg_p,ROSPVelocity,tfTLT,broadcaster,loop_rate);
+      boost::thread t8(rospublish,msg_v,ROSPPosition,msg_p,ROSPVelocity,tfTLT, broadcaster, joint_pub,joint_state,loop_rate);
       boost::thread t9(roslistenerinit,ROSLPosition);
 
       t1.join();
