@@ -942,6 +942,7 @@ void Movepruebas() {
       std_msgs::Float64MultiArray msg_p;
       std::string rot;
       float periode=500;
+	    sensor_msgs::JointState joint_state;
 
 
       /*
